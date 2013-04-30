@@ -1,6 +1,6 @@
 RD: 8
 Title: Uniform referencing of Robot Data Message Types
-Date:
+Date: 2013-04-30
 Author: Ingo Lütkebohle, Bielefeld University, Germany
 Type: General
 Content-Type: text/x-rst
@@ -61,11 +61,12 @@ particular version of a type, and is usually dependent on the actual content
 of the message type definition. There is no shared standard for this, however,
 and therefore, this specification aims to provide such a standard.
 
-Furthermore, typecodes are often computed as hash-sums of the content of a
-message type. For typical hash functions, even the addition of a single space
-character to the definition will already change the code. Therefore,
-pre-processing should be applied to make sure that only incompatible changes
-to the message structure trigger a change in typecode.
+Furthermore, typecodes are often computed as hash-sums of the textual
+message type definition. For typical hash functions, even the addition
+of a single space character to the definition will already change the
+code. Therefore, pre-processing should be applied to make sure that
+only incompatible changes to the message structure trigger a change in
+typecode.
 
 Proposed approach
 =================
@@ -74,9 +75,11 @@ Fundamentally, this specification adopts the "magnet-link" scheme (see [1] for
 the specification and [2] for a concise summary), and restricts it for
 implementation simplicity.
 
-In this schema, a unique identifier for a message data type is formed based
-on the SHA1[3] hash code of the message data type definition after removal of
-extraneous characters.
+In this schema, a unique identifier for a message data type is formed
+based on the SHA1[3] hash code of the name of the message type
+definition syntax and the textual message data type definition itself,
+after removal of extraneous characters. An example for a name of a
+message type definition syntax is "ROSMSG0.9".
 
 This identifier has the form::
 
@@ -84,27 +87,31 @@ This identifier has the form::
 
 And thus constitutes a Uniform Resource Name [4]
 
-The original magnet link format allows different has functions. However,
+The original magnet link format allows different hash functions. However,
 this is purely to support legacy and thus not needed here. While some robot
 software frameworks already use MD5 hash codes, these are vulnerable to
 collision and MUST NOT be used.
 
-DATA PREPARATION
+Data Preparation
 ================
 
-The hash code for the unique identifier is computed on the specification of
-the message type in fully expanded, canonicalized form.
+The hash code for the unique identifier is computed on the name of the
+message type definition syntax and the textual specification of the
+message type in fully expanded, canonicalized form.
 
 Expansion
 ---------
 
 Fully expanded is defined as follows:
 
+  #. The first line consists of a string identifying the message type
+     definition syntax and is terminated by a ASCII carriage-return
+     line-feed (CRLF), even if no other lines follow.
   #. All field definitions containing only primitive types are kept as-is
   #. All fields containing non-primitive types must be replaced by
      that type's definition.
 
-For example, the ROS message type "Twist" is natively defined as::
+For example, the ROS message type ``Twist`` is natively defined as::
 
   # This expresses velocity in free space broken into it's linear and angular parts.
   Vector3  linear
@@ -116,8 +123,10 @@ and ``Vector3`` is::
   float64 y
   float64 z
 
-Thus, the fully expanded form of Twist is::
+Thus, the fully expanded form of ``Twist`` when specified in
+"RSGMSG0.9" syntax is::
 
+  ROSMSG0.9
   float64 x
   float64 y
   float64 z
@@ -134,18 +143,19 @@ changes, and removes:
   #. Comments
   #. Any whitespace that is not required by the type definition format
 
-Furthermore, any required whitespace must be replaced with the
-minimal amount of such whitespace. Where both tabs and spaces are permissible
-as whitespace separators, spaces must be used. Line-endings must be ASCII
-carriage-return line-feed (CRLF). Thus, usually, each occurence of whitespace
-will be either a single space (within lines) or a single CRLF sequence.
+Furthermore, any required whitespace must be replaced with the minimal
+amount of such whitespace. Where both tabs and spaces are permissible
+as whitespace separators, spaces must be used. Each line, including
+the final one, has to be terminated by a ASCII carriage-return
+line-feed (CRLF). Thus, usually, each occurence of whitespace will be
+either a single space (within lines) or a single CRLF sequence.
 
 The content should be encoded as UTF8[5].
 
-This description is by necessity general to accomodate a variety of message
-definition formats. While it is expected to be precise, to prevent confusion,
-the specialization of this description is recommended for each robot software
-framework.
+This description is by necessity general to accomodate a variety of
+message type definition formats. While it is expected to be precise,
+to prevent confusion, the specialization of this description is
+recommended for each robot software framework.
 
 Link Format
 ===========
@@ -168,6 +178,13 @@ Magnet links have the form
 The following attributes MUST be supported by all implementations conforming
 to this RRFC.
 
+  syntax
+
+    Names the message type definition syntax according to which the
+    described message type is defined. This attribute MUST have the
+    same value as the first line of the expanded message type
+    definition described in `Expansion`_.
+
   xt
 
     exact topic -- contains the URN as defined above
@@ -178,28 +195,41 @@ to this RRFC.
 
   as
 
-    acceptable source -- URL where the message definition can be downloaded
+    acceptable source -- URL where the message definition can be
+    downloaded
 
-The protocols supported for handling the "as" attribute MUST be http and
-https. Other protocols SHOULD be avoided. This is simply because there does
-not appear to be a compelling reason to support more than one protocol, and
-standardizing on http should maximize compatibility while minimizing
-implementation effort.
+    The protocols supported for handling the "as" attribute MUST be
+    http and https. Other protocols SHOULD be avoided. This is simply
+    because there does not appear to be a compelling reason to support
+    more than one protocol, and standardizing on http should maximize
+    compatibility while minimizing implementation effort.
+
+The following attributes MAY be supported by conforming
+implementations:
+
+  v
+
+    A version string which disambiguates the "dn" attribute in case
+    multiple versions of a named message type exist. Like "dn", this
+    attribute is intended to provide additional human readable
+    information and is not indented for machine consumption.
 
 The other magnet link attributes (such as a tracker url) do not appear to make
 sense for the small files typical for message type definitions and are omitted
 here. They MAY be used, but MUST NOT contain essential information.
 
-Multiple occurences of an attribute, as per the magnet specification, MUST NOT
-be used for the xt and dn attribute, but MAY be used for the "as" attribute. In
-particular, multiple values here could enable a redundant retrieval source for
-the message type definition.
+Multiple occurences of an attribute, as per the magnet specification,
+MUST NOT be used for the "syntax", "xt", "dn" and "v" attributes, but
+MAY be used for the "as" attribute. In particular, multiple values
+here could enable a redundant retrieval source for the message type
+definition.
 
 Example Code
 ============
 
-This code is not normative and for illustration purposes only. It expects
-a FULLY EXPANDED data type definition as input.
+This code is not normative and for illustration purposes only. It
+expects a FULLY EXPANDED (as described in `Data Preparation`) data
+type definition as input.
 
 This code is in Python and has been tested using Python 2.7.3 on Linux,
 but should work on any platform which has a recent hashlib (at least since 2.5)::
@@ -224,14 +254,13 @@ but should work on any platform which has a recent hashlib (at least since 2.5):
               continue
           md.update(u"%s\r\n" % clean_line)
       uid = base64.b32encode(md.digest())
-      print "magnet:?xt=urn:sha1:%s&dn=%s" % (uid, urllib.quote_plus(filename))
+      print "magnet:?syntax=ROSMSG0.9?xt=urn:sha1:%s&dn=%s" % (uid, urllib.quote_plus(filename))
 
 
 On the ``Twist`` message from section `Expansion`_ above, the following
 output should be obtained::
 
-    magnet:?xt=urn:sha1:6FQLLAPYV6I6L5FJ7UINUWGGHEM5PBHA&dn=Twist.msg
-
+    magnet:?syntax=ROSMSG0.9?xt=urn:sha1:3I42H3S6NNFQ2MSVX7XZKYAYSCX5QBYJ&dn=Twist.msg
 
 References
 ==========
