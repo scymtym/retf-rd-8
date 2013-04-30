@@ -1,0 +1,263 @@
+RD: 8
+Title: Uniform referencing of Robot Data Message Types
+Date:
+Author: Ingo Lütkebohle, Bielefeld University, Germany
+Type: General
+Content-Type: text/x-rst
+Created: 2012-07-07
+Raw-text:
+
+.. contents:: Table of Contents
+.. section-numbering::
+
+
+Status of this RRFC
+===================
+This document is a draft of a future Robotics Request for Comment. It must not be formally referenced.
+
+Abstract
+========
+
+This specification describes an unambiguous, uniform way of referencing
+robot message data type definitions. This is required for applications that
+would like to add additional information not contained within the type
+definition itself, e.g., for documentation, or to describe mappings between
+types.
+
+In particular, in contrast to references currently provided by robot software
+frameworks, this specification a) allows unique identifiers for different
+versions, b) is framework independent, and c) has a well-defined means of
+adding descriptive information.
+
+
+Rationale
+=========
+
+The type definitions for messages exchanged within robot software systems
+are generally minimal, in that they only specify enough information for
+transmission, and conversion to and from those internal data structures that
+are created by the corresponding middleware.
+
+For a number of purposes, such as data-type conversion, or content checking
+against type schemas, this is not sufficient. In some cases, the required
+information could be added to the message definition formats, and this is
+not ruled out here, but that is not a general solution. Firstly, it is not
+available for existing type definitions. Furthermore, the additional information
+might depend on more than just the type, e.g., it could apply only to certain
+uses of a message type. Also, for conversion to other message types, it is
+generally considered infeasible to add all potential conversions to the message
+definition.
+
+Therefore, it is expected that external metadata for types will be provided,
+and such metadata needs an unambiguous means of referencing the message types it
+is about.
+
+Within robot software frameworks, message types are generally only referred
+to by their (potentially hierarchical) name. However, due to framework
+evolution, and the potential for clashes between different, uncoordinated
+software packages, this is not sufficient. For this reason, most frameworks
+offer an additional typecode which is used internally to uniquely identify a
+particular version of a type, and is usually dependent on the actual content
+of the message type definition. There is no shared standard for this, however,
+and therefore, this specification aims to provide such a standard.
+
+Furthermore, typecodes are often computed as hash-sums of the content of a
+message type. For typical hash functions, even the addition of a single space
+character to the definition will already change the code. Therefore,
+pre-processing should be applied to make sure that only incompatible changes
+to the message structure trigger a change in typecode.
+
+Proposed approach
+=================
+
+Fundamentally, this specification adopts the "magnet-link" scheme (see [1] for
+the specification and [2] for a concise summary), and restricts it for
+implementation simplicity.
+
+In this schema, a unique identifier for a message data type is formed based
+on the SHA1[3] hash code of the message data type definition after removal of
+extraneous characters.
+
+This identifier has the form::
+
+    urn:sha1:<base32 encoded hash value>
+
+And thus constitutes a Uniform Resource Name [4]
+
+The original magnet link format allows different has functions. However,
+this is purely to support legacy and thus not needed here. While some robot
+software frameworks already use MD5 hash codes, these are vulnerable to
+collision and MUST NOT be used.
+
+DATA PREPARATION
+================
+
+The hash code for the unique identifier is computed on the specification of
+the message type in fully expanded, canonicalized form.
+
+Expansion
+---------
+
+Fully expanded is defined as follows:
+
+  #. All field definitions containing only primitive types are kept as-is
+  #. All fields containing non-primitive types must be replaced by
+     that type's definition.
+
+For example, the ROS message type "Twist" is natively defined as::
+
+  # This expresses velocity in free space broken into it's linear and angular parts.
+  Vector3  linear
+  Vector3  angular
+
+and ``Vector3`` is::
+
+  float64 x
+  float64 y
+  float64 z
+
+Thus, the fully expanded form of Twist is::
+
+  float64 x
+  float64 y
+  float64 z
+  float64 x
+  float64 y
+  float64 z
+
+Canonicalization
+----------------
+
+The canonicalization of a type is intended to remove meaningless editing
+changes, and removes:
+
+  #. Comments
+  #. Any whitespace that is not required by the type definition format
+
+Furthermore, any required whitespace must be replaced with the
+minimal amount of such whitespace. Where both tabs and spaces are permissible
+as whitespace separators, spaces must be used. Line-endings must be ASCII
+carriage-return line-feed (CRLF). Thus, usually, each occurence of whitespace
+will be either a single space (within lines) or a single CRLF sequence.
+
+The content should be encoded as UTF8[5].
+
+This description is by necessity general to accomodate a variety of message
+definition formats. While it is expected to be precise, to prevent confusion,
+the specialization of this description is recommended for each robot software
+framework.
+
+Link Format
+===========
+
+While URNs alone are sufficient for unique identification, for actual retrieval
+a resolution service is normally required. Here, magnet links offer a way out
+by providing a single link that includes both the URN and other attributes,
+including name and source information. In this way, a single information item
+can be transmitted and a resolver becomes optional.
+
+The full magnet specification is available at [1]. However, to be self-contained,
+we provide a short summary here. Furthermore, magnet links allow considerable
+variety, owing to their heritage with P2P protocols. Here, we provide additional
+requirements and restrictions to make them easier and more consistent to use in
+a robotics context.
+
+Magnet links have the form
+    magnet:?attribute=value[&attribute2=value2]*
+
+The following attributes MUST be supported by all implementations conforming
+to this RRFC.
+
+  xt
+
+    exact topic -- contains the URN as defined above
+
+  dn
+
+    "display" name (file name)
+
+  as
+
+    acceptable source -- URL where the message definition can be downloaded
+
+The protocols supported for handling the "as" attribute MUST be http and
+https. Other protocols SHOULD be avoided. This is simply because there does
+not appear to be a compelling reason to support more than one protocol, and
+standardizing on http should maximize compatibility while minimizing
+implementation effort.
+
+The other magnet link attributes (such as a tracker url) do not appear to make
+sense for the small files typical for message type definitions and are omitted
+here. They MAY be used, but MUST NOT contain essential information.
+
+Multiple occurences of an attribute, as per the magnet specification, MUST NOT
+be used for the xt and dn attribute, but MAY be used for the "as" attribute. In
+particular, multiple values here could enable a redundant retrieval source for
+the message type definition.
+
+Example Code
+============
+
+This code is not normative and for illustration purposes only. It expects
+a FULLY EXPANDED data type definition as input.
+
+This code is in Python and has been tested using Python 2.7.3 on Linux,
+but should work on any platform which has a recent hashlib (at least since 2.5)::
+
+  import hashlib
+  import base64
+  import sys
+  import urllib
+
+  def clean(line):
+      line = line.strip()
+      # ignore empty, comment and rosmsg subtype inclusion lines
+      if len(line) == 0 or line[0] in ('#', '[' ) or line.find("/") != -1:
+          return None
+      return " ".join(line.split())
+
+  for filename in sys.argv[1:]:
+      md = hashlib.sha1()
+      for line in file(filename):
+          clean_line = clean(line)
+          if not clean_line:
+              continue
+          md.update(u"%s\r\n" % clean_line)
+      uid = base64.b32encode(md.digest())
+      print "magnet:?xt=urn:sha1:%s&dn=%s" % (uid, urllib.quote_plus(filename))
+
+
+On the ``Twist`` message from section `Expansion`_ above, the following
+output should be obtained::
+
+    magnet:?xt=urn:sha1:6FQLLAPYV6I6L5FJ7UINUWGGHEM5PBHA&dn=Twist.msg
+
+
+References
+==========
+
+[1] http://magnet-uri.sourceforge.net/
+[2] http://en.wikipedia.org/wiki/Magnet_URI_scheme
+[3] FIPS180-2 Secure Hash Standard http://csrc.nist.gov/publications/fips/fips180-2/fips180-2withchangenotice.pdf
+[4] http://tools.ietf.org/html/rfc2141
+[5] http://tools.ietf.org/html/rfc3629
+
+Acknowledgments
+===============
+
+Thanks to Jan Moringen of Bielefeld University for corrections and clarifying feedback.
+
+Copyright
+=========
+
+This document is released into the public domain.
+
+
+..
+   Local Variables:
+   mode: rst
+   indent-tabs-mode: nil
+   sentence-end-double-space: t
+   fill-column: 70
+   coding: utf-8
+   End:
